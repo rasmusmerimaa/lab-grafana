@@ -8,6 +8,7 @@ IDP which is already deployed in the cluster.
 
 Exercises:
 
+* Replace `lauri` with your username
 * Add `prometheus.yaml` in `grafana-datasources` ConfigMap to
   [declaratively configure data sources](https://grafana.com/docs/grafana/latest/administration/provisioning/) for Grafana
 * Add CloudNativePG cluster into your sandbox or use existing one
