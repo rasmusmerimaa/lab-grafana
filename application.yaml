@@ -1,0 +1,211 @@
+---
+apiVersion: codemowers.cloud/v1beta1
+kind: OIDCClient
+metadata:
+  name: grafana
+spec:
+  displayName: Grafana
+  uri: https://grafana-lauri.codemowers.ee/login/generic_oauth
+  redirectUris:
+    - https://grafana-lauri.codemowers.ee/login/generic_oauth
+  allowedGroups:
+    - codemowers.io:users
+  grantTypes:
+    - authorization_code
+    - refresh_token
+  responseTypes:
+    - code
+  availableScopes:
+    - openid
+    - profile
+  tokenEndpointAuthMethod: none
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+data: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+data:
+  grafana.ini: |
+    [log]
+    level = warn
+    [server]
+    domain = grafana-lauri.codemowers.ee
+    root_url = https://%(domain)s/
+    enable_gzip = true
+    [auth.generic_oauth]
+    name = OAuth
+    icon = signin
+    enabled = true
+    empty_scopes = false
+    allow_sign_up = true
+    use_pkce = true
+    email_attribute_path = email
+    role_attribute_path = contains(groups[*], 'codemowers.io:users') && 'Admin' || 'Editor'
+    allow_assign_grafana_admin = true
+    [security]
+    disable_initial_admin_creation = true
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: grafana
+  name: grafana
+spec:
+  revisionHistoryLimit: 0
+  serviceName: grafana
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                  - amd64
+      securityContext:
+        fsGroup: 472
+      containers:
+        - name: grafana
+          image: mirror.gcr.io/grafana/grafana:11.1.4@sha256:886b56d5534e54f69a8cfcb4b8928da8fc753178a7a3d20c3f9b04b660169805
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 472
+          env:
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-client-grafana-owner-secrets
+                  key: OIDC_CLIENT_ID
+            - name: GF_AUTH_GENERIC_OAUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-client-grafana-owner-secrets
+                  key: OIDC_CLIENT_SECRET
+            - name: GF_AUTH_GENERIC_OAUTH_SCOPES
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-client-grafana-owner-secrets
+                  key: OIDC_AVAILABLE_SCOPES
+            - name: GF_AUTH_GENERIC_OAUTH_AUTH_URL
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-client-grafana-owner-secrets
+                  key: OIDC_IDP_AUTH_URI
+            - name: GF_AUTH_GENERIC_OAUTH_TOKEN_URL
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-client-grafana-owner-secrets
+                  key: OIDC_IDP_TOKEN_URI
+            - name: GF_AUTH_GENERIC_OAUTH_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-client-grafana-owner-secrets
+                  key: OIDC_IDP_USERINFO_URI
+            - name: GF_AUTH_GENERIC_OAUTH_SIGNOUT_REDIRECT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-client-grafana-owner-secrets
+                  key: OIDC_IDP_URI
+          ports:
+            - containerPort: 3000
+              name: http
+              protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /robots.txt
+              port: 3000
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 2
+          livenessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 3000
+            timeoutSeconds: 1
+          resources:
+            requests:
+              cpu: 250m
+              memory: 750Mi
+          volumeMounts:
+            - mountPath: /var/lib/grafana
+              name: grafana-data
+            - mountPath: /etc/grafana
+              name: grafana-config
+            - mountPath: /etc/grafana/provisioning/datasources
+              name: grafana-datasources
+      volumes:
+        - name: grafana-config
+          configMap:
+            name: grafana-config
+        - name: grafana-datasources
+          configMap:
+            name: grafana-datasources
+  volumeClaimTemplates:
+    - metadata:
+        name: grafana-data
+      spec:
+        storageClassName: sqlite
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+spec:
+  ports:
+    - port: 80
+      protocol: TCP
+      targetPort: http
+  selector:
+    app: grafana
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    external-dns.alpha.kubernetes.io/target: traefik.codemowers.ee
+spec:
+  ingressClassName: shared
+  rules:
+  - host: grafana-lauri.codemowers.ee
+    http:
+      paths:
+      - pathType: Prefix
+        path: "/"
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 80
+  tls:
+    - hosts:
+        - "*.codemowers.ee"
