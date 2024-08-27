@@ -5,9 +5,9 @@ metadata:
   name: grafana
 spec:
   displayName: Grafana
-  uri: https://grafana-lauri.codemowers.ee/login/generic_oauth
+  uri: https://grafana-rasmus.codemowers.ee/login/generic_oauth
   redirectUris:
-    - https://grafana-lauri.codemowers.ee/login/generic_oauth
+    - https://grafana-rasmus.codemowers.ee/login/generic_oauth
   allowedGroups:
     - codemowers.io:users
   grantTypes:
@@ -35,7 +35,7 @@ data:
     [log]
     level = warn
     [server]
-    domain = grafana-lauri.codemowers.ee
+    domain = grafana-rasmus.codemowers.ee
     root_url = https://%(domain)s/
     enable_gzip = true
     [auth.generic_oauth]
@@ -196,7 +196,7 @@ metadata:
 spec:
   ingressClassName: shared
   rules:
-  - host: grafana-lauri.codemowers.ee
+  - host: grafana-rasmus.codemowers.ee
     http:
       paths:
       - pathType: Prefix
