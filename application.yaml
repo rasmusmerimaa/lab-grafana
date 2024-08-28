@@ -247,6 +247,7 @@ spec:
       app.kubernetes.io/part-of: prometheus
   podTargetLabels:
     - app
+    - namespace
   podMetricsEndpoints:
     - port: admin
 ---
@@ -266,3 +267,18 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: prometheus
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hello-gin
+spec:
+  groups:
+    - name: hello-gin
+      rules:
+        - alert: The hello-gin application is not serving any requests
+          expr: rate(gin_request_total[1m]) == 0
+          for: 1m
+          labels:
+            severity: critical
